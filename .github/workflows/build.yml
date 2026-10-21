@@ -9,6 +9,10 @@ jobs:
   apk:
     runs-on: ubuntu-latest
 
+    env:
+      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -21,11 +25,17 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Build debug APK
-        run: gradle :app:assembleDebug
+      - name: Decode keystore
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > keystore.jks
+          fi
+
+      - name: Build release APK
+        run: gradle :app:assembleRelease
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ArPLaYEr-debug
-          path: app/build/outputs/apk/debug/*.apk
+          name: ArPLaYEr-apk
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error

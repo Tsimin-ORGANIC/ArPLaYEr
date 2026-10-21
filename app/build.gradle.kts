@@ -3,6 +3,10 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val keystoreB64 = System.getenv("KEYSTORE_BASE64").orEmpty()
+val keystorePassword = System.getenv("KEYSTORE_PASSWORD").orEmpty()
+val hasSigning = keystoreB64.isNotBlank() && keystorePassword.isNotBlank()
+
 android {
     namespace = "com.tsimin.arplayer"
     compileSdk = 35
@@ -15,9 +19,24 @@ android {
         versionName = "0.1.0"
     }
 
+    signingConfigs {
+        if (hasSigning) {
+            create("release") {
+                storeFile = rootProject.file("keystore.jks")
+                storePassword = keystorePassword
+                keyAlias = "arplayer"
+                keyPassword = keystorePassword
+                storeType = "jks"
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (hasSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
