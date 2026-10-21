@@ -118,7 +118,7 @@ class MainActivity : Activity() {
                     for (f in folders) {
                         rows.add(Row("fav", f.id, f.title, "${f.count} 个视频"))
                     }
-                    listView.adapter?.notifyDataSetChanged()
+                    (listView.adapter as RowAdapter).notifyDataSetChanged()
                     if (rows.isEmpty()) {
                         Toast.makeText(this, "没有可播放的内容", Toast.LENGTH_SHORT).show()
                     }
