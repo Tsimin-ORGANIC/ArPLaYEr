@@ -2,6 +2,8 @@ package com.tsimin.arplayer
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.URLEncoder
+import java.security.MessageDigest
 
 data class FavFolder(val id: Long, val title: String, val count: Int)
 
@@ -25,7 +27,21 @@ data class QrPoll(
     val cookies: Map<String, String>
 )
 
+data class Up(val mid: Long, val uname: String)
+
+data class UpPage(val items: List<Up>, val hasMore: Boolean)
+
 object Api {
+
+    private val mixinTable = intArrayOf(
+        46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35,
+        27, 43, 5, 49, 33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13,
+        37, 48, 7, 16, 24, 55, 40, 61, 26, 17, 0, 1, 60, 51, 30, 4,
+        22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11, 36, 20, 34, 44, 52
+    )
+
+    @Volatile private var cachedMixinKey: String? = null
+    @Volatile private var mixinKeyExpire = 0L
 
     fun cookie(p: Prefs): String {
         val sb = StringBuilder()
@@ -186,5 +202,138 @@ object Api {
             )
         )
         return json.getJSONObject("data").optLong("cid", 0)
+    }
+
+    fun followings(p: Prefs, pn: Int): UpPage {
+        val url = "https://api.bilibili.com/x/relation/followings" +
+            "?vmid=${p.mid}&pn=$pn&ps=50&order=desc&order_type=attention"
+        val json = ok(JSONObject(Http.get(url, cookie(p))))
+        val data = json.optJSONObject("data") ?: return UpPage(emptyList(), false)
+        val arr = data.optJSONArray("list") ?: JSONArray()
+        val out = ArrayList<Up>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            out.add(Up(o.optLong("mid"), o.optString("uname")))
+        }
+        val total = data.optInt("total", 0)
+        return UpPage(out, pn * 50 < total)
+    }
+
+    fun upVideos(p: Prefs, mid: Long, ps: Int): List<VideoItem> {
+        val query = wbiQuery(
+            mapOf(
+                "mid" to mid.toString(),
+                "ps" to ps.toString(),
+                "pn" to "1",
+                "order" to "pubdate",
+                "tid" to "0",
+                "keyword" to "",
+                "platform" to "web",
+                "web_location" to "1550101"
+            ),
+            p
+        )
+        val json = ok(
+            JSONObject(
+                Http.get(
+                    "https://api.bilibili.com/x/space/wbi/arc/search?$query",
+                    cookie(p),
+                    "https://space.bilibili.com/$mid/video"
+                )
+            )
+        )
+        val arr = json.optJSONObject("data")
+            ?.optJSONObject("list")
+            ?.optJSONArray("vlist")
+            ?: return emptyList()
+        val out = ArrayList<VideoItem>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            out.add(
+                VideoItem(
+                    bvid = o.optString("bvid"),
+                    aid = o.optLong("aid"),
+                    cid = 0L,
+                    title = o.optString("title"),
+                    duration = parseLength(o.optString("length")),
+                    pubtime = o.optLong("created")
+                )
+            )
+        }
+        return out
+    }
+
+    fun videoTags(p: Prefs, bvid: String): List<String> {
+        val json = try {
+            JSONObject(
+                Http.get(
+                    "https://api.bilibili.com/x/web-interface/view/detail/tag?bvid=$bvid",
+                    cookie(p)
+                )
+            )
+        } catch (_: Exception) {
+            return emptyList()
+        }
+        if (json.optInt("code", -1) != 0) return emptyList()
+        val arr = json.optJSONArray("data") ?: return emptyList()
+        val out = ArrayList<String>(arr.length())
+        for (i in 0 until arr.length()) {
+            val name = arr.optJSONObject(i)?.optString("tag_name", "") ?: ""
+            if (name.isNotEmpty()) out.add(name)
+        }
+        return out
+    }
+
+    private fun parseLength(text: String): Int {
+        if (text.isEmpty()) return 0
+        var total = 0
+        for (part in text.split(':')) {
+            total = total * 60 + (part.trim().toIntOrNull() ?: 0)
+        }
+        return total
+    }
+
+    private fun mixinKey(p: Prefs): String {
+        val now = System.currentTimeMillis()
+        val cached = cachedMixinKey
+        if (cached != null && now < mixinKeyExpire) return cached
+        val json = JSONObject(Http.get("https://api.bilibili.com/x/web-interface/nav", cookie(p)))
+        val wbi = json.getJSONObject("data").getJSONObject("wbi_img")
+        val imgKey = wbi.getString("img_url").substringAfterLast('/').substringBefore('.')
+        val subKey = wbi.getString("sub_url").substringAfterLast('/').substringBefore('.')
+        val orig = imgKey + subKey
+        val key = buildString {
+            for (i in mixinTable) {
+                if (i < orig.length) append(orig[i])
+            }
+        }.take(32)
+        cachedMixinKey = key
+        mixinKeyExpire = now + 3_600_000L
+        return key
+    }
+
+    private fun md5(text: String): String {
+        val digest = MessageDigest.getInstance("MD5").digest(text.toByteArray(Charsets.UTF_8))
+        val sb = StringBuilder(digest.size * 2)
+        for (b in digest) {
+            sb.append(String.format("%02x", b.toInt() and 0xff))
+        }
+        return sb.toString()
+    }
+
+    private fun enc(value: String): String =
+        URLEncoder.encode(value, "UTF-8")
+            .replace("+", "%20")
+            .replace("*", "%2A")
+            .replace("%7E", "~")
+
+    private fun wbiQuery(params: Map<String, String>, p: Prefs): String {
+        val all = params.toMutableMap()
+        all["wts"] = (System.currentTimeMillis() / 1000).toString()
+        val query = all.toSortedMap().entries.joinToString("&") { (k, v) ->
+            "${enc(k)}=${enc(v)}"
+        }
+        val rid = md5(query + mixinKey(p))
+        return "$query&w_rid=$rid"
     }
 }

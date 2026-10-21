@@ -21,6 +21,10 @@ class MainActivity : Activity() {
     private lateinit var header: TextView
     private val rows = ArrayList<Row>()
 
+    private var folders: List<FavFolder> = emptyList()
+    private var toviewCount = 0
+    private var loaded = false
+
     private data class Row(val kind: String, val id: Long, val title: String, val subtitle: String)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -78,14 +82,25 @@ class MainActivity : Activity() {
         listView.adapter = RowAdapter()
         listView.setOnItemClickListener { _, _, position, _ ->
             val row = rows[position]
-            val intent = Intent(this, VideoListActivity::class.java)
-            intent.putExtra("mode", row.kind)
-            intent.putExtra("id", row.id)
-            intent.putExtra("title", row.title)
-            startActivity(intent)
+            when (row.kind) {
+                "upmanage" -> startActivity(Intent(this, UpListActivity::class.java))
+                "tagmanage" -> startActivity(Intent(this, TagActivity::class.java))
+                else -> {
+                    val intent = Intent(this, VideoListActivity::class.java)
+                    intent.putExtra("mode", row.kind)
+                    intent.putExtra("id", row.id)
+                    intent.putExtra("title", row.title)
+                    startActivity(intent)
+                }
+            }
         }
 
         load()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (loaded) rebuildRows()
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
@@ -106,22 +121,15 @@ class MainActivity : Activity() {
                 prefs.mid = nav.mid
                 prefs.uname = nav.uname
 
-                val folders = Api.favFolders(prefs)
+                val folderList = Api.favFolders(prefs)
                 val toview = Api.toview(prefs)
 
                 runOnUiThread {
                     header.text = nav.uname.ifEmpty { "ArPLaYEr" }
-                    rows.clear()
-                    if (toview.isNotEmpty()) {
-                        rows.add(Row("toview", 0L, "稍后再看", "${toview.size} 个视频"))
-                    }
-                    for (f in folders) {
-                        rows.add(Row("fav", f.id, f.title, "${f.count} 个视频"))
-                    }
-                    (listView.adapter as RowAdapter).notifyDataSetChanged()
-                    if (rows.isEmpty()) {
-                        Toast.makeText(this, "没有可播放的内容", Toast.LENGTH_SHORT).show()
-                    }
+                    folders = folderList
+                    toviewCount = toview.size
+                    loaded = true
+                    rebuildRows()
                 }
             } catch (e: Exception) {
                 runOnUiThread {
@@ -129,6 +137,43 @@ class MainActivity : Activity() {
                 }
             }
         }
+    }
+
+    private fun rebuildRows() {
+        rows.clear()
+        if (toviewCount > 0) {
+            rows.add(Row("toview", 0L, "稍后再看", "$toviewCount 个视频"))
+        }
+        val upCount = prefs.selectedUps.size
+        rows.add(
+            Row(
+                "upfeed",
+                0L,
+                "UP 更新",
+                if (upCount > 0) "$upCount 个 UP" else "未选择 UP"
+            )
+        )
+        for (f in folders) {
+            rows.add(Row("fav", f.id, f.title, "${f.count} 个视频"))
+        }
+        rows.add(
+            Row(
+                "upmanage",
+                0L,
+                "关注的 UP",
+                if (upCount > 0) "已选 $upCount 个" else "选择白名单"
+            )
+        )
+        val tags = prefs.tags
+        rows.add(
+            Row(
+                "tagmanage",
+                0L,
+                "标签过滤",
+                if (tags.isEmpty()) "未设置" else tags.sorted().joinToString(" / ")
+            )
+        )
+        (listView.adapter as RowAdapter).notifyDataSetChanged()
     }
 
     private inner class RowAdapter : BaseAdapter() {

@@ -30,6 +30,14 @@
             android:exported="false" />
 
         <activity
+            android:name=".UpListActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".TagActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".PlayerActivity"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
             android:exported="false" />

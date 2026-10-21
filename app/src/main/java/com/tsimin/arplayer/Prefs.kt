@@ -38,6 +38,19 @@ class Prefs(context: Context) {
         get() = sp.getString("uname", "").orEmpty()
         set(v) { sp.edit().putString("uname", v).apply() }
 
+    var selectedUps: Set<Long>
+        get() = sp.getStringSet("selected_ups", null)
+            ?.mapNotNull { it.toLongOrNull() }
+            ?.toSet()
+            ?: emptySet()
+        set(v) {
+            sp.edit().putStringSet("selected_ups", v.map { it.toString() }.toSet()).apply()
+        }
+
+    var tags: Set<String>
+        get() = sp.getStringSet("tags", null)?.toSet() ?: emptySet()
+        set(v) { sp.edit().putStringSet("tags", v).apply() }
+
     val isLoggedIn: Boolean
         get() = sessdata.isNotEmpty() && dedeUserId.isNotEmpty()
 

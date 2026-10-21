@@ -13,8 +13,11 @@ import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
 import java.text.SimpleDateFormat
+import java.util.Collections
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 class VideoListActivity : Activity() {
@@ -22,6 +25,7 @@ class VideoListActivity : Activity() {
     private lateinit var prefs: Prefs
     private lateinit var listView: ListView
     private lateinit var more: Button
+    private lateinit var head: TextView
     private val items = ArrayList<VideoItem>()
 
     private var mode = "fav"
@@ -42,7 +46,7 @@ class VideoListActivity : Activity() {
             setBackgroundColor(Color.parseColor("#0E1015"))
         }
 
-        val head = TextView(this).apply {
+        head = TextView(this).apply {
             text = title
             textSize = 16f
             setTextColor(Color.WHITE)
@@ -93,7 +97,11 @@ class VideoListActivity : Activity() {
             (listView.adapter as VideoAdapter).notifyDataSetChanged()
         }
 
-        loadNext()
+        if (mode == "up") {
+            loadUpFeed()
+        } else {
+            loadNext()
+        }
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
@@ -133,6 +141,74 @@ class VideoListActivity : Activity() {
                 }
             }
         }
+    }
+
+    private fun loadUpFeed() {
+        val mids = prefs.selectedUps.toList()
+        if (mids.isEmpty()) {
+            Toast.makeText(this, "还没有选择 UP", Toast.LENGTH_SHORT).show()
+            head.text = "UP 更新"
+            return
+        }
+        head.text = "UP 更新 · 加载中…"
+        thread {
+            try {
+                val collected = Collections.synchronizedList(ArrayList<VideoItem>())
+                val pool = Executors.newFixedThreadPool(4)
+                for (mid in mids.take(40)) {
+                    pool.execute {
+                        try {
+                            collected.addAll(Api.upVideos(prefs, mid, 5))
+                        } catch (_: Exception) {
+                        }
+                    }
+                }
+                pool.shutdown()
+                pool.awaitTermination(90, TimeUnit.SECONDS)
+
+                var result = collected.sortedByDescending { it.pubtime }
+                val wanted = prefs.tags.map { it.lowercase(Locale.US) }.toSet()
+                if (wanted.isNotEmpty()) {
+                    result = filterByTags(result, wanted)
+                }
+                val finalResult = result
+                runOnUiThread {
+                    items.clear()
+                    items.addAll(finalResult)
+                    head.text = "UP 更新 · ${finalResult.size} 个"
+                    (listView.adapter as VideoAdapter).notifyDataSetChanged()
+                    if (finalResult.isEmpty()) {
+                        Toast.makeText(this, "没有匹配的视频", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    head.text = "UP 更新"
+                    Toast.makeText(this, "加载失败：${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun filterByTags(list: List<VideoItem>, wanted: Set<String>): List<VideoItem> {
+        val checked = list.take(80)
+        val kept = Collections.synchronizedList(ArrayList<VideoItem>())
+        val pool = Executors.newFixedThreadPool(6)
+        for (item in checked) {
+            pool.execute {
+                val tags = try {
+                    Api.videoTags(prefs, item.bvid).map { it.lowercase(Locale.US) }
+                } catch (_: Exception) {
+                    emptyList<String>()
+                }
+                if (tags.isEmpty() || tags.any { it in wanted }) {
+                    kept.add(item)
+                }
+            }
+        }
+        pool.shutdown()
+        pool.awaitTermination(90, TimeUnit.SECONDS)
+        return kept.sortedByDescending { it.pubtime }
     }
 
     private fun finishPage() {
