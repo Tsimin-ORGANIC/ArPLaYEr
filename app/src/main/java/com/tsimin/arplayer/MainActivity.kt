@@ -85,6 +85,7 @@ class MainActivity : Activity() {
             when (row.kind) {
                 "upmanage" -> startActivity(Intent(this, UpListActivity::class.java))
                 "tagmanage" -> startActivity(Intent(this, TagActivity::class.java))
+                "search" -> startActivity(Intent(this, SearchActivity::class.java))
                 else -> {
                     val intent = Intent(this, VideoListActivity::class.java)
                     intent.putExtra("mode", row.kind)
@@ -145,6 +146,7 @@ class MainActivity : Activity() {
             rows.add(Row("toview", 0L, "稍后再看", "$toviewCount 个视频"))
         }
         val upCount = prefs.selectedUps.size
+        rows.add(Row("search", 0L, "搜索", "视频 / UP"))
         rows.add(
             Row(
                 "upfeed",

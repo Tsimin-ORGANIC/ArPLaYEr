@@ -38,6 +38,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".SearchActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".PlayerActivity"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
             android:exported="false" />

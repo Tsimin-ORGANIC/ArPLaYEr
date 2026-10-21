@@ -13,8 +13,15 @@ data class VideoItem(
     val cid: Long,
     val title: String,
     val duration: Int,
-    val pubtime: Long
+    val pubtime: Long,
+    val author: String = ""
 )
+
+data class VideoPage(val items: List<VideoItem>, val hasMore: Boolean)
+
+data class UserItem(val mid: Long, val uname: String, val fans: Int, val fansText: String, val sign: String)
+
+data class UserPage(val items: List<UserItem>, val hasMore: Boolean)
 
 data class FavPage(val items: List<VideoItem>, val hasMore: Boolean)
 
@@ -219,12 +226,12 @@ object Api {
         return UpPage(out, pn * 50 < total)
     }
 
-    fun upVideos(p: Prefs, mid: Long, ps: Int): List<VideoItem> {
+    fun upVideos(p: Prefs, mid: Long, pn: Int, ps: Int): VideoPage {
         val query = wbiQuery(
             mapOf(
                 "mid" to mid.toString(),
                 "ps" to ps.toString(),
-                "pn" to "1",
+                "pn" to pn.toString(),
                 "order" to "pubdate",
                 "tid" to "0",
                 "keyword" to "",
@@ -242,10 +249,10 @@ object Api {
                 )
             )
         )
-        val arr = json.optJSONObject("data")
-            ?.optJSONObject("list")
-            ?.optJSONArray("vlist")
-            ?: return emptyList()
+        val listObj = json.optJSONObject("data")?.optJSONObject("list")
+            ?: return VideoPage(emptyList(), false)
+        val arr = listObj.optJSONArray("vlist") ?: JSONArray()
+        val total = listObj.optInt("count", 0)
         val out = ArrayList<VideoItem>(arr.length())
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
@@ -256,12 +263,104 @@ object Api {
                     cid = 0L,
                     title = o.optString("title"),
                     duration = parseLength(o.optString("length")),
-                    pubtime = o.optLong("created")
+                    pubtime = o.optLong("created"),
+                    author = o.optString("author")
                 )
             )
         }
-        return out
+        val more = if (total > 0) pn * ps < total else arr.length() >= ps
+        return VideoPage(out, more && out.isNotEmpty())
     }
+
+    fun searchVideos(p: Prefs, keyword: String, pn: Int): VideoPage {
+        val json = searchJson(p, "video", keyword, pn)
+        val data = json.optJSONObject("data") ?: return VideoPage(emptyList(), false)
+        val arr = data.optJSONArray("result") ?: return VideoPage(emptyList(), false)
+        val out = ArrayList<VideoItem>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val bvid = o.optString("bvid")
+            if (bvid.isEmpty()) continue
+            out.add(
+                VideoItem(
+                    bvid = bvid,
+                    aid = o.optLong("aid"),
+                    cid = 0L,
+                    title = stripHtml(o.optString("title")),
+                    duration = parseLength(o.optString("duration")),
+                    pubtime = o.optLong("pubdate"),
+                    author = stripHtml(o.optString("author"))
+                )
+            )
+        }
+        val pages = data.optInt("numPages", 1)
+        return VideoPage(out, pn < pages && out.isNotEmpty())
+    }
+
+    fun searchUsers(p: Prefs, keyword: String, pn: Int): UserPage {
+        val json = searchJson(p, "bili_user", keyword, pn)
+        val data = json.optJSONObject("data") ?: return UserPage(emptyList(), false)
+        val arr = data.optJSONArray("result") ?: return UserPage(emptyList(), false)
+        val out = ArrayList<UserItem>(arr.length())
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val mid = o.optLong("mid")
+            if (mid <= 0) continue
+            out.add(
+                UserItem(
+                    mid = mid,
+                    uname = stripHtml(o.optString("uname")),
+                    fans = o.optInt("fans"),
+                    fansText = o.optString("fans"),
+                    sign = o.optString("usign")
+                )
+            )
+        }
+        val pages = data.optInt("numPages", 1)
+        return UserPage(out, pn < pages && out.isNotEmpty())
+    }
+
+    private fun searchJson(p: Prefs, type: String, keyword: String, pn: Int): JSONObject {
+        val referer = if (type == "video") {
+            "https://search.bilibili.com/all?keyword=${enc(keyword)}"
+        } else {
+            "https://search.bilibili.com/upuser?keyword=${enc(keyword)}"
+        }
+        return try {
+            val query = wbiQuery(
+                mapOf(
+                    "search_type" to type,
+                    "keyword" to keyword,
+                    "page" to pn.toString(),
+                    "page_size" to "30",
+                    "platform" to "pc"
+                ),
+                p
+            )
+            ok(
+                JSONObject(
+                    Http.get(
+                        "https://api.bilibili.com/x/web-interface/wbi/search/type?$query",
+                        cookie(p),
+                        referer
+                    )
+                )
+            )
+        } catch (e: Exception) {
+            val query = "search_type=$type&keyword=${enc(keyword)}&page=$pn&page_size=30"
+            ok(
+                JSONObject(
+                    Http.get(
+                        "https://api.bilibili.com/x/web-interface/search/type?$query",
+                        cookie(p),
+                        referer
+                    )
+                )
+            )
+        }
+    }
+
+    private fun stripHtml(text: String): String = text.replace(Regex("<[^>]*>"), "")
 
     fun videoTags(p: Prefs, bvid: String): List<String> {
         val json = try {

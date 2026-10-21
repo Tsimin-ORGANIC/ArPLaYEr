@@ -34,6 +34,11 @@ class VideoListActivity : Activity() {
     private var hasMore = true
     private var loading = false
 
+    private val upMids = ArrayList<Long>()
+    private val upNext = HashMap<Long, Int>()
+    private val upDone = HashSet<Long>()
+    private val seen = HashSet<String>()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
@@ -62,7 +67,9 @@ class VideoListActivity : Activity() {
         more = Button(this).apply {
             text = "加载更多"
             visibility = View.GONE
-            setOnClickListener { loadNext() }
+            setOnClickListener {
+                if (mode == "up") loadUpBatch() else loadNext()
+            }
         }
 
         root.addView(
@@ -98,7 +105,12 @@ class VideoListActivity : Activity() {
         }
 
         if (mode == "up") {
-            loadUpFeed()
+            upMids.addAll(prefs.selectedUps.sorted())
+            if (upMids.isEmpty()) {
+                Toast.makeText(this, "还没有选择 UP", Toast.LENGTH_SHORT).show()
+            } else {
+                loadUpBatch()
+            }
         } else {
             loadNext()
         }
@@ -111,6 +123,7 @@ class VideoListActivity : Activity() {
         loading = true
         more.text = "加载中…"
         more.isEnabled = false
+        more.visibility = View.VISIBLE
         val next = page + 1
 
         thread {
@@ -143,57 +156,65 @@ class VideoListActivity : Activity() {
         }
     }
 
-    private fun loadUpFeed() {
-        val mids = prefs.selectedUps.toList()
-        if (mids.isEmpty()) {
-            Toast.makeText(this, "还没有选择 UP", Toast.LENGTH_SHORT).show()
-            head.text = "UP 更新"
-            return
-        }
+    private fun loadUpBatch() {
+        if (loading || upMids.isEmpty()) return
+        loading = true
+        more.text = "加载中…"
+        more.isEnabled = false
+        more.visibility = View.VISIBLE
         head.text = "UP 更新 · 加载中…"
-        thread {
-            try {
-                val collected = Collections.synchronizedList(ArrayList<VideoItem>())
-                val pool = Executors.newFixedThreadPool(4)
-                for (mid in mids.take(40)) {
-                    pool.execute {
-                        try {
-                            collected.addAll(Api.upVideos(prefs, mid, 5))
-                        } catch (_: Exception) {
-                        }
-                    }
-                }
-                pool.shutdown()
-                pool.awaitTermination(90, TimeUnit.SECONDS)
 
-                var result = collected.sortedByDescending { it.pubtime }
-                val wanted = prefs.tags.map { it.lowercase(Locale.US) }.toSet()
-                if (wanted.isNotEmpty()) {
-                    result = filterByTags(result, wanted)
-                }
-                val finalResult = result
-                runOnUiThread {
-                    items.clear()
-                    items.addAll(finalResult)
-                    head.text = "UP 更新 · ${finalResult.size} 个"
-                    (listView.adapter as VideoAdapter).notifyDataSetChanged()
-                    if (finalResult.isEmpty()) {
-                        Toast.makeText(this, "没有匹配的视频", Toast.LENGTH_SHORT).show()
+        thread {
+            val batch = Collections.synchronizedList(ArrayList<VideoItem>())
+            val pool = Executors.newFixedThreadPool(4)
+            val pending = synchronized(upDone) { upMids.filter { it !in upDone } }
+            for (mid in pending) {
+                val pn = synchronized(upNext) { upNext[mid] ?: 1 }
+                pool.execute {
+                    try {
+                        val result = Api.upVideos(prefs, mid, pn, 30)
+                        synchronized(upNext) { upNext[mid] = pn + 1 }
+                        if (!result.hasMore || result.items.isEmpty()) {
+                            synchronized(upDone) { upDone.add(mid) }
+                        }
+                        batch.addAll(result.items)
+                    } catch (_: Exception) {
                     }
                 }
-            } catch (e: Exception) {
-                runOnUiThread {
-                    head.text = "UP 更新"
-                    Toast.makeText(this, "加载失败：${e.message}", Toast.LENGTH_LONG).show()
+            }
+            pool.shutdown()
+            pool.awaitTermination(180, TimeUnit.SECONDS)
+
+            val wanted = prefs.tags.map { it.lowercase(Locale.US) }.toSet()
+            val filtered = if (wanted.isEmpty()) batch else filterByTags(batch.toList(), wanted)
+
+            runOnUiThread {
+                loading = false
+                more.isEnabled = true
+                more.text = "加载更多"
+                for (item in filtered) {
+                    if (seen.add(item.bvid)) items.add(item)
+                }
+                items.sortByDescending { it.pubtime }
+                (listView.adapter as VideoAdapter).notifyDataSetChanged()
+
+                val doneCount = synchronized(upDone) { upDone.size }
+                hasMore = doneCount < upMids.size
+                more.visibility = if (hasMore) View.VISIBLE else View.GONE
+                head.text = "UP 更新 · ${items.size} 个"
+
+                if (items.isEmpty() && !hasMore) {
+                    Toast.makeText(this, "没有匹配的视频", Toast.LENGTH_SHORT).show()
                 }
             }
         }
     }
 
     private fun filterByTags(list: List<VideoItem>, wanted: Set<String>): List<VideoItem> {
-        val checked = list.take(80)
+        val checked = list.take(150)
+        val rest = list.drop(150)
         val kept = Collections.synchronizedList(ArrayList<VideoItem>())
-        val pool = Executors.newFixedThreadPool(6)
+        val pool = Executors.newFixedThreadPool(4)
         for (item in checked) {
             pool.execute {
                 val tags = try {
@@ -207,8 +228,8 @@ class VideoListActivity : Activity() {
             }
         }
         pool.shutdown()
-        pool.awaitTermination(90, TimeUnit.SECONDS)
-        return kept.sortedByDescending { it.pubtime }
+        pool.awaitTermination(180, TimeUnit.SECONDS)
+        return kept + rest
     }
 
     private fun finishPage() {
@@ -257,7 +278,7 @@ class VideoListActivity : Activity() {
                 textSize = 15f
                 setTextColor(if (watched) Color.parseColor("#6B7075") else Color.WHITE)
             }
-            val meta = listOf(fmtDuration(item.duration), fmtDate(item.pubtime))
+            val meta = listOf(item.author, fmtDuration(item.duration), fmtDate(item.pubtime))
                 .filter { it.isNotEmpty() }
                 .joinToString("  ·  ")
             val sub = TextView(this@VideoListActivity).apply {
