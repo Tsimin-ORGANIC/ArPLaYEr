@@ -37,7 +37,7 @@ class TagActivity : Activity() {
             setPadding(dp(20), dp(24), dp(20), dp(4))
         }
 
-        val hint = TextView(this).apply {
+        val note = TextView(this).apply {
             text = "UP 更新里只保留命中任一标签的视频（长按删除）"
             textSize = 12f
             setTextColor(Color.parseColor("#9AA0A6"))
@@ -80,7 +80,7 @@ class TagActivity : Activity() {
             )
         )
         root.addView(
-            hint,
+            note,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
