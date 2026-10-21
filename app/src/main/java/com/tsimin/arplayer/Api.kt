@@ -2,7 +2,6 @@ package com.tsimin.arplayer
 
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.URLDecoder
 
 data class FavFolder(val id: Long, val title: String, val count: Int)
 
@@ -17,9 +16,14 @@ data class VideoItem(
 
 data class FavPage(val items: List<VideoItem>, val hasMore: Boolean)
 
-data class Nav(val isLogin: Boolean, val mid: Long, val uname: String)
+data class Nav(val isLogin: Boolean, val mid: Long, val uname: String, val code: Int)
 
-data class QrPoll(val code: Int, val state: Int, val url: String)
+data class QrPoll(
+    val code: Int,
+    val state: Int,
+    val url: String,
+    val cookies: Map<String, String>
+)
 
 object Api {
 
@@ -53,26 +57,43 @@ object Api {
     }
 
     fun qrPoll(key: String): QrPoll {
-        val json = JSONObject(
-            Http.get("https://passport.bilibili.com/x/passport-login/web/qrcode/poll?qrcode_key=$key")
+        val result = Http.getResult(
+            "https://passport.bilibili.com/x/passport-login/web/qrcode/poll?qrcode_key=$key"
         )
+        val json = JSONObject(result.body)
         val data = json.optJSONObject("data")
+        val url = data?.optString("url", "") ?: ""
+        val cookies = parseRawQuery(url) + parseSetCookies(result.setCookies)
         return QrPoll(
             json.optInt("code", -1),
             data?.optInt("code", -1) ?: -1,
-            data?.optString("url", "") ?: ""
+            url,
+            cookies
         )
     }
 
-    fun parseCookieUrl(url: String): Map<String, String> {
+    private fun parseRawQuery(url: String): Map<String, String> {
+        val query = url.substringAfter('?', "").substringBefore('#')
+        if (query.isEmpty()) return emptyMap()
         val out = mutableMapOf<String, String>()
-        val query = url.substringAfter('?', "")
-        if (query.isEmpty()) return out
         for (part in query.split('&')) {
             val k = part.substringBefore('=', "")
             val v = part.substringAfter('=', "")
             if (k.isNotEmpty() && v.isNotEmpty()) {
-                out[k] = URLDecoder.decode(v, "UTF-8")
+                out[k] = v
+            }
+        }
+        return out
+    }
+
+    private fun parseSetCookies(lines: List<String>): Map<String, String> {
+        val out = mutableMapOf<String, String>()
+        for (line in lines) {
+            val pair = line.substringBefore(';')
+            val k = pair.substringBefore('=', "").trim()
+            val v = pair.substringAfter('=', "").trim()
+            if (k.isNotEmpty() && v.isNotEmpty()) {
+                out[k] = v
             }
         }
         return out
@@ -86,10 +107,15 @@ object Api {
     }
 
     fun nav(p: Prefs): Nav {
-        val data = JSONObject(
-            Http.get("https://api.bilibili.com/x/web-interface/nav", cookie(p))
-        ).optJSONObject("data") ?: return Nav(false, 0, "")
-        return Nav(data.optBoolean("isLogin"), data.optLong("mid"), data.optString("uname"))
+        val json = JSONObject(Http.get("https://api.bilibili.com/x/web-interface/nav", cookie(p)))
+        val code = json.optInt("code", -1)
+        val data = json.optJSONObject("data") ?: return Nav(false, 0, "", code)
+        return Nav(
+            data.optBoolean("isLogin"),
+            data.optLong("mid"),
+            data.optString("uname"),
+            code
+        )
     }
 
     fun favFolders(p: Prefs): List<FavFolder> {

@@ -3,13 +3,17 @@ package com.tsimin.arplayer
 import java.net.HttpURLConnection
 import java.net.URL
 
+data class HttpResult(val body: String, val setCookies: List<String>)
+
 object Http {
 
     private const val UA =
         "Mozilla/5.0 (Linux; Android 15; Pixel 7) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
 
-    fun get(url: String, cookie: String? = null): String {
+    fun get(url: String, cookie: String? = null): String = getResult(url, cookie).body
+
+    fun getResult(url: String, cookie: String? = null): HttpResult {
         val conn = URL(url).openConnection() as HttpURLConnection
         try {
             conn.connectTimeout = 15000
@@ -27,7 +31,10 @@ object Http {
             if (code !in 200..299) {
                 throw RuntimeException("HTTP $code")
             }
-            return text
+            val setCookies = conn.headerFields.entries
+                .filter { "Set-Cookie".equals(it.key, ignoreCase = true) }
+                .flatMap { it.value ?: emptyList() }
+            return HttpResult(text, setCookies)
         } finally {
             conn.disconnect()
         }

@@ -127,15 +127,14 @@ class LoginActivity : Activity() {
                     return
                 }
                 0 -> {
-                    finishLogin(r.url)
+                    finishLogin(r.cookies)
                     return
                 }
             }
         }
     }
 
-    private fun finishLogin(url: String) {
-        val cookies = Api.parseCookieUrl(url)
+    private fun finishLogin(cookies: Map<String, String>) {
         prefs.sessdata = cookies["SESSDATA"] ?: ""
         prefs.biliJct = cookies["bili_jct"] ?: ""
         prefs.dedeUserId = cookies["DedeUserID"] ?: ""
@@ -148,14 +147,22 @@ class LoginActivity : Activity() {
         } catch (_: Exception) {
         }
 
-        try {
-            val nav = Api.nav(prefs)
-            prefs.mid = nav.mid
-            prefs.uname = nav.uname
+        val nav = try {
+            Api.nav(prefs)
         } catch (_: Exception) {
+            null
         }
 
         runOnUiThread {
+            if (nav != null && !nav.isLogin) {
+                status.text = "登录校验失败 (${nav.code})，请重新扫码"
+                refresh.visibility = View.VISIBLE
+                return@runOnUiThread
+            }
+            if (nav != null) {
+                prefs.mid = nav.mid
+                prefs.uname = nav.uname
+            }
             Toast.makeText(this, "登录成功", Toast.LENGTH_SHORT).show()
             startActivity(Intent(this, MainActivity::class.java))
             finish()
