@@ -18,6 +18,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 
 class VideoListActivity : Activity() {
@@ -173,6 +174,7 @@ class VideoListActivity : Activity() {
         thread {
             val cutoff = System.currentTimeMillis() / 1000 - 7 * 24 * 3600L
             val batch = Collections.synchronizedList(ArrayList<VideoItem>())
+            val okCount = AtomicInteger(0)
             val pool = Executors.newFixedThreadPool(4)
             val pending = synchronized(upDone) { upMids.filter { it !in upDone } }
             for (mid in pending) {
@@ -182,7 +184,8 @@ class VideoListActivity : Activity() {
                     var guard = 0
                     try {
                         while (!done && guard < 4) {
-                            val result = Api.upVideos(prefs, mid, pn, 30)
+                            val result = Api.upVideos(prefs, mid, pn)
+                            okCount.incrementAndGet()
                             guard++
                             batch.addAll(result.items.filter { it.pubtime >= cutoff })
                             val reachedOld = result.items.any { it.pubtime < cutoff }
@@ -219,7 +222,13 @@ class VideoListActivity : Activity() {
                 head.text = "UP 更新 · 近 7 天 · ${items.size} 个"
 
                 if (items.isEmpty() && !hasMore) {
-                    Toast.makeText(this, "近 7 天没有更新", Toast.LENGTH_SHORT).show()
+                    if (okCount.get() == 0) {
+                        Toast.makeText(this, "拉取失败，请稍后重试", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(this, "近 7 天没有更新", Toast.LENGTH_SHORT).show()
+                    }
+                } else if (items.isEmpty()) {
+                    Toast.makeText(this, "部分 UP 拉取失败，可再点一次加载更多", Toast.LENGTH_SHORT).show()
                 }
             }
         }

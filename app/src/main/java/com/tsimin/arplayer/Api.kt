@@ -63,6 +63,9 @@ data class UpPage(val items: List<Up>, val hasMore: Boolean)
 
 object Api {
 
+    private const val APP_KEY = "1d8b6e7d45233436"
+    private const val APP_SALT = "560c52ccd288fed045859ed18bffd973"
+
     private val mixinTable = intArrayOf(
         46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35,
         27, 43, 5, 49, 33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13,
@@ -376,49 +379,45 @@ object Api {
         return UpPage(out, pn * 50 < total)
     }
 
-    fun upVideos(p: Prefs, mid: Long, pn: Int, ps: Int): VideoPage {
-        val query = wbiQuery(
+    fun upVideos(p: Prefs, mid: Long, pn: Int): VideoPage {
+        val query = appQuery(
             mapOf(
-                "mid" to mid.toString(),
-                "ps" to ps.toString(),
-                "pn" to pn.toString(),
+                "build" to "7200000",
+                "mobi_app" to "android",
                 "order" to "pubdate",
-                "tid" to "0",
-                "keyword" to "",
-                "platform" to "web",
-                "web_location" to "1550101"
-            ),
-            p
+                "platform" to "android",
+                "ps" to "20",
+                "pn" to pn.toString(),
+                "vmid" to mid.toString(),
+                "fnval" to "0"
+            )
         )
         val json = ok(
             JSONObject(
-                Http.get(
-                    "https://api.bilibili.com/x/space/wbi/arc/search?$query",
-                    cookie(p),
-                    "https://space.bilibili.com/$mid/video"
-                )
+                Http.get("https://app.bilibili.com/x/v2/space/archive?$query", cookie(p))
             )
         )
-        val listObj = json.optJSONObject("data")?.optJSONObject("list")
-            ?: return VideoPage(emptyList(), false)
-        val arr = listObj.optJSONArray("vlist") ?: JSONArray()
-        val total = listObj.optInt("count", 0)
+        val data = json.optJSONObject("data") ?: return VideoPage(emptyList(), false)
+        val arr = data.optJSONArray("item") ?: JSONArray()
+        val total = data.optInt("count", 0)
         val out = ArrayList<VideoItem>(arr.length())
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
+            val bvid = o.optString("bvid")
+            if (bvid.isEmpty()) continue
             out.add(
                 VideoItem(
-                    bvid = o.optString("bvid"),
-                    aid = o.optLong("aid"),
-                    cid = 0L,
+                    bvid = bvid,
+                    aid = o.optLong("param"),
+                    cid = o.optLong("first_cid"),
                     title = o.optString("title"),
-                    duration = parseLength(o.optString("length")),
-                    pubtime = o.optLong("created"),
+                    duration = o.optInt("duration"),
+                    pubtime = o.optLong("ctime"),
                     author = o.optString("author")
                 )
             )
         }
-        val more = if (total > 0) pn * ps < total else arr.length() >= ps
+        val more = if (total > 0) pn * 20 < total else arr.length() >= 20
         return VideoPage(out, more && out.isNotEmpty())
     }
 
@@ -541,6 +540,16 @@ object Api {
             total = total * 60 + (part.trim().toIntOrNull() ?: 0)
         }
         return total
+    }
+
+    private fun appQuery(params: Map<String, String>): String {
+        val all = params.toMutableMap()
+        all["appkey"] = APP_KEY
+        all["ts"] = (System.currentTimeMillis() / 1000).toString()
+        val query = all.toSortedMap().entries.joinToString("&") { (k, v) ->
+            "${enc(k)}=${enc(v)}"
+        }
+        return "$query&sign=${md5(query + APP_SALT)}"
     }
 
     private fun mixinKey(p: Prefs): String {

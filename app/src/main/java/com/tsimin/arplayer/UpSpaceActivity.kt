@@ -232,7 +232,7 @@ class UpSpaceActivity : Activity() {
 
         thread {
             try {
-                val result = Api.upVideos(prefs, mid, next, 30)
+                val result = Api.upVideos(prefs, mid, next)
                 runOnUiThread {
                     page = next
                     items.addAll(result.items)
