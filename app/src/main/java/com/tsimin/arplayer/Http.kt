@@ -51,6 +51,26 @@ object Http {
         }
     }
 
+    fun getBytes(
+        url: String,
+        referer: String = "https://www.bilibili.com/"
+    ): ByteArray {
+        val conn = URL(url).openConnection() as HttpURLConnection
+        try {
+            conn.connectTimeout = 15000
+            conn.readTimeout = 20000
+            conn.setRequestProperty("User-Agent", UA)
+            conn.setRequestProperty("Referer", referer)
+            val code = conn.responseCode
+            if (code !in 200..299) {
+                throw RuntimeException("HTTP $code")
+            }
+            return conn.inputStream.use { it.readBytes() }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     fun getResult(
         url: String,
         cookie: String? = null,

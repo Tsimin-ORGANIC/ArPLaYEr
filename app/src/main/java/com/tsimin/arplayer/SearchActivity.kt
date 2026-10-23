@@ -195,6 +195,13 @@ class SearchActivity : Activity() {
             if (mode == "video" && position < videos.size) {
                 VideoActions.show(this, prefs, videos[position].bvid)
                 true
+            } else if (mode == "user" && position < users.size) {
+                val user = users[position]
+                val intent = Intent(this, UpSpaceActivity::class.java)
+                intent.putExtra("mid", user.mid)
+                intent.putExtra("uname", user.uname)
+                startActivity(intent)
+                true
             } else {
                 false
             }

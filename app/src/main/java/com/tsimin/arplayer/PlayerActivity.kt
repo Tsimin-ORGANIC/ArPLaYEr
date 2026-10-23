@@ -2,9 +2,11 @@ package com.tsimin.arplayer
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.Context
+import android.content.Intent
 import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -15,7 +17,11 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import org.json.JSONObject
@@ -25,9 +31,27 @@ class PlayerActivity : Activity() {
 
     private lateinit var prefs: Prefs
     private lateinit var webView: WebView
-    private lateinit var loadingText: TextView
+    private lateinit var titleView: TextView
+    private lateinit var statsView: TextView
+    private lateinit var upNameView: TextView
+    private lateinit var avatarView: ImageView
+    private lateinit var followBtn: Button
+    private lateinit var likeBtn: Button
+    private lateinit var coinBtn: Button
+    private lateinit var readFavBtn: Button
+    private lateinit var spaceBtn: Button
+
     private var customView: View? = null
     private var customCallback: WebChromeClient.CustomViewCallback? = null
+
+    private var bvid = ""
+    private var aid = 0L
+    private var cid = 0L
+    private var upMid = 0L
+    private var upName = ""
+    private var followed = false
+    private var liked = false
+    private var coins = 0
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,17 +59,21 @@ class PlayerActivity : Activity() {
         prefs = Prefs(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        val bvid = intent.getStringExtra("bvid") ?: ""
-        val aid = intent.getLongExtra("aid", 0L)
-        val cid = intent.getLongExtra("cid", 0L)
+        bvid = intent.getStringExtra("bvid") ?: ""
+        aid = intent.getLongExtra("aid", 0L)
+        cid = intent.getLongExtra("cid", 0L)
         if (bvid.isEmpty()) {
             finish()
             return
         }
         prefs.markWatched(bvid)
 
-        val root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.BLACK)
+        }
 
+        val playerBox = AspectBox(this)
         webView = WebView(this).apply {
             setBackgroundColor(Color.BLACK)
             settings.javaScriptEnabled = true
@@ -57,70 +85,282 @@ class PlayerActivity : Activity() {
             webChromeClient = chromeClient
             webViewClient = viewClient
         }
-
-        loadingText = TextView(this).apply {
-            text = "加载中…"
-            setTextColor(Color.parseColor("#9AA0A6"))
-            textSize = 14f
-            val lp = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            lp.gravity = Gravity.CENTER
-            layoutParams = lp
-        }
-
-        root.addView(
+        playerBox.addView(
             webView,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         )
-        root.addView(loadingText)
 
-        val actions = TextView(this).apply {
-            text = "操作"
-            textSize = 13f
-            setTextColor(Color.WHITE)
-            setPadding(dp(14), dp(8), dp(14), dp(8))
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#73000000"))
-                cornerRadius = dp(18).toFloat()
-            }
-            setOnClickListener { VideoActions.show(this@PlayerActivity, prefs, bvid) }
+        val scroll = ScrollView(this).apply {
+            setBackgroundColor(Color.parseColor("#0E1015"))
+            isFillViewport = true
         }
-        val actionsLp = FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-        actionsLp.gravity = Gravity.TOP or Gravity.END
-        actionsLp.topMargin = dp(48)
-        actionsLp.rightMargin = dp(16)
-        root.addView(actions, actionsLp)
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(16), dp(20), dp(28))
+        }
 
+        titleView = TextView(this).apply {
+            text = "加载中…"
+            textSize = 18f
+            setTextColor(Color.WHITE)
+            maxLines = 3
+            ellipsize = TextUtils.TruncateAt.END
+        }
+
+        statsView = TextView(this).apply {
+            textSize = 12f
+            setTextColor(Color.parseColor("#9AA0A6"))
+            setPadding(0, dp(8), 0, dp(16))
+        }
+
+        val upRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        avatarView = ImageView(this).apply {
+            setBackgroundColor(Color.parseColor("#1B2028"))
+            layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
+        }
+        upNameView = TextView(this).apply {
+            textSize = 15f
+            setTextColor(Color.WHITE)
+            setPadding(dp(12), 0, dp(12), 0)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        followBtn = Button(this).apply {
+            text = "关注"
+            textSize = 13f
+            isEnabled = false
+            setOnClickListener { toggleFollow() }
+        }
+        upRow.addView(avatarView)
+        upRow.addView(upNameView)
+        upRow.addView(followBtn)
+        upRow.setOnClickListener { openSpace() }
+
+        val actionRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        likeBtn = actionButton("点赞") { toggleLike() }
+        coinBtn = actionButton("投币") { addCoin() }
+        readFavBtn = actionButton("收藏") { addFav() }
+        actionRow.addView(
+            likeBtn,
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        )
+        actionRow.addView(
+            coinBtn,
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        )
+        actionRow.addView(
+            readFavBtn,
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        )
+
+        spaceBtn = Button(this).apply {
+            text = "进入 UP 主详细页"
+            textSize = 14f
+            isEnabled = false
+            setOnClickListener { openSpace() }
+        }
+
+        content.addView(titleView)
+        content.addView(statsView)
+        content.addView(
+            upRow,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        content.addView(
+            actionRow,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(18) }
+        )
+        content.addView(
+            spaceBtn,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(18) }
+        )
+        scroll.addView(
+            content,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        root.addView(
+            playerBox,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        root.addView(
+            scroll,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+        )
         setContentView(root)
 
         syncCookies()
-
-        if (cid <= 0) {
-            thread {
-                try {
-                    val resolved = Api.resolveCid(prefs, bvid)
-                    runOnUiThread { load(bvid, aid, resolved) }
-                } catch (e: Exception) {
-                    runOnUiThread {
-                        Toast.makeText(this, "获取视频信息失败：${e.message}", Toast.LENGTH_LONG).show()
-                        finish()
-                    }
-                }
-            }
-        } else {
-            load(bvid, aid, cid)
-        }
+        if (cid > 0) load(bvid, aid, cid)
+        thread { fetchInfo() }
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+
+    private fun actionButton(label: String, click: () -> Unit): Button {
+        return Button(this).apply {
+            text = label
+            textSize = 13f
+            isEnabled = false
+            setOnClickListener { click() }
+        }
+    }
+
+    private fun fetchInfo() {
+        val info = try {
+            Api.videoInfo(prefs, bvid)
+        } catch (_: Exception) {
+            null
+        }
+        if (info == null) {
+            runOnUiThread {
+                Toast.makeText(this, "获取视频信息失败", Toast.LENGTH_SHORT).show()
+                if (cid <= 0) finish()
+            }
+            return
+        }
+        val followedNow = if (info.mid > 0) {
+            try {
+                Api.relationState(prefs, info.mid)
+            } catch (_: Exception) {
+                false
+            }
+        } else {
+            false
+        }
+        val likedNow = try {
+            Api.hasLike(prefs, bvid)
+        } catch (_: Exception) {
+            false
+        }
+        val coinsNow = try {
+            Api.coins(prefs, bvid)
+        } catch (_: Exception) {
+            0
+        }
+        runOnUiThread {
+            followed = followedNow
+            liked = likedNow
+            coins = coinsNow
+            bindInfo(info)
+            if (cid <= 0) {
+                aid = info.aid
+                load(bvid, info.aid, info.cid)
+            }
+        }
+    }
+
+    private fun bindInfo(info: VideoInfo) {
+        titleView.text = info.title
+        statsView.text = "播放 ${fmtCount(info.viewCount)}  ·  点赞 ${fmtCount(info.likeCount)}  ·  硬币 ${fmtCount(info.coinCount)}"
+        upMid = info.mid
+        upName = info.uname
+        aid = info.aid
+        upNameView.text = info.uname
+        Images.load(avatarView, info.face, dp(44))
+        updateButtons()
+        followBtn.isEnabled = info.mid > 0
+        likeBtn.isEnabled = true
+        coinBtn.isEnabled = true
+        readFavBtn.isEnabled = true
+        spaceBtn.isEnabled = info.mid > 0
+    }
+
+    private fun updateButtons() {
+        followBtn.text = if (followed) "已关注" else "关注"
+        likeBtn.text = if (liked) "已赞" else "点赞"
+        coinBtn.text = when {
+            coins >= 2 -> "已投 2 币"
+            coins == 1 -> "再投 1 币"
+            else -> "投币"
+        }
+    }
+
+    private fun toggleFollow() {
+        if (upMid <= 0) return
+        val target = !followed
+        runAction(followBtn, { Api.setFollow(prefs, upMid, target) }) {
+            followed = target
+            updateButtons()
+        }
+    }
+
+    private fun toggleLike() {
+        val target = !liked
+        runAction(likeBtn, { Api.setLike(prefs, bvid, target) }) {
+            liked = target
+            updateButtons()
+        }
+    }
+
+    private fun addCoin() {
+        if (coins >= 2) {
+            Toast.makeText(this, "已经投满 2 枚了", Toast.LENGTH_SHORT).show()
+            return
+        }
+        runAction(coinBtn, { Api.addCoin(prefs, bvid, 1) }) {
+            coins += 1
+            updateButtons()
+        }
+    }
+
+    private fun addFav() {
+        if (aid <= 0) return
+        runAction(readFavBtn, { Api.addFav(prefs, aid) }) {
+        }
+    }
+
+    private fun runAction(btn: Button, action: () -> String, done: () -> Unit) {
+        btn.isEnabled = false
+        thread {
+            var message = ""
+            var ok = true
+            try {
+                message = action()
+            } catch (e: Exception) {
+                ok = false
+                message = e.message ?: "未知错误"
+            }
+            runOnUiThread {
+                btn.isEnabled = true
+                Toast.makeText(
+                    this,
+                    if (ok) message else "操作失败：$message",
+                    Toast.LENGTH_SHORT
+                ).show()
+                if (ok) done()
+            }
+        }
+    }
+
+    private fun openSpace() {
+        if (upMid <= 0) return
+        val intent = Intent(this, UpSpaceActivity::class.java)
+        intent.putExtra("mid", upMid)
+        intent.putExtra("uname", upName)
+        startActivity(intent)
+    }
 
     private fun syncCookies() {
         val cm = CookieManager.getInstance()
@@ -195,7 +435,6 @@ class PlayerActivity : Activity() {
 
         override fun onPageFinished(view: WebView?, url: String?) {
             super.onPageFinished(view, url)
-            loadingText.visibility = View.GONE
             val css = """
                 .bpx-player-ending,
                 .bpx-player-ending-related,
@@ -225,5 +464,15 @@ class PlayerActivity : Activity() {
         webView.loadUrl("about:blank")
         webView.destroy()
         super.onDestroy()
+    }
+
+    private class AspectBox(context: Context) : FrameLayout(context) {
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val width = View.MeasureSpec.getSize(widthMeasureSpec)
+            super.onMeasure(
+                widthMeasureSpec,
+                View.MeasureSpec.makeMeasureSpec(width * 9 / 16, View.MeasureSpec.EXACTLY)
+            )
+        }
     }
 }

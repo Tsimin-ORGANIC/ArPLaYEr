@@ -86,6 +86,13 @@ class MainActivity : Activity() {
                 "upmanage" -> startActivity(Intent(this, UpListActivity::class.java))
                 "tagmanage" -> startActivity(Intent(this, TagActivity::class.java))
                 "search" -> startActivity(Intent(this, SearchActivity::class.java))
+                "myspace" -> {
+                    val intent = Intent(this, UpSpaceActivity::class.java)
+                    intent.putExtra("mid", prefs.mid)
+                    intent.putExtra("uname", prefs.uname)
+                    intent.putExtra("self", true)
+                    startActivity(intent)
+                }
                 else -> {
                     val intent = Intent(this, VideoListActivity::class.java)
                     intent.putExtra("mode", row.kind)
@@ -175,6 +182,7 @@ class MainActivity : Activity() {
                 if (tags.isEmpty()) "未设置" else tags.sorted().joinToString(" / ")
             )
         )
+        rows.add(Row("myspace", 0L, "我的主页", prefs.uname.ifEmpty { "个人信息 / 投稿" }))
         (listView.adapter as RowAdapter).notifyDataSetChanged()
     }
 

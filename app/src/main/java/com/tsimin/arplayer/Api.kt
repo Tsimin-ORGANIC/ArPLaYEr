@@ -28,7 +28,22 @@ data class VideoInfo(
     val cid: Long,
     val mid: Long,
     val uname: String,
-    val title: String
+    val title: String,
+    val face: String = "",
+    val viewCount: Long = 0,
+    val likeCount: Long = 0,
+    val coinCount: Long = 0,
+    val favCount: Long = 0
+)
+
+data class SpaceCard(
+    val mid: Long,
+    val uname: String,
+    val face: String,
+    val sign: String,
+    val fans: Long,
+    val videos: Long,
+    val following: Boolean
 )
 
 data class FavPage(val items: List<VideoItem>, val hasMore: Boolean)
@@ -222,12 +237,41 @@ object Api {
         )
         val data = json.getJSONObject("data")
         val owner = data.optJSONObject("owner")
+        val stat = data.optJSONObject("stat")
         return VideoInfo(
             aid = data.optLong("aid"),
             cid = data.optLong("cid"),
             mid = owner?.optLong("mid") ?: 0L,
             uname = owner?.optString("name") ?: "",
-            title = data.optString("title")
+            title = data.optString("title"),
+            face = owner?.optString("face") ?: "",
+            viewCount = stat?.optLong("view") ?: 0,
+            likeCount = stat?.optLong("like") ?: 0,
+            coinCount = stat?.optLong("coin") ?: 0,
+            favCount = stat?.optLong("favorite") ?: 0
+        )
+    }
+
+    fun spaceCard(p: Prefs, mid: Long): SpaceCard {
+        val json = ok(
+            JSONObject(
+                Http.get(
+                    "https://api.bilibili.com/x/web-interface/card?mid=$mid&photo=true",
+                    cookie(p),
+                    "https://space.bilibili.com/$mid"
+                )
+            )
+        )
+        val data = json.optJSONObject("data") ?: return SpaceCard(mid, "", "", "", 0, 0, false)
+        val card = data.optJSONObject("card")
+        return SpaceCard(
+            mid = mid,
+            uname = card?.optString("name") ?: "",
+            face = card?.optString("face") ?: "",
+            sign = card?.optString("sign") ?: "",
+            fans = card?.optInt("fans")?.toLong() ?: 0L,
+            videos = data.optInt("archive_count").toLong(),
+            following = data.optBoolean("following")
         )
     }
 

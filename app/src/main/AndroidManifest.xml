@@ -38,6 +38,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".UpSpaceActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".WebLoginActivity"
             android:exported="false" />
 

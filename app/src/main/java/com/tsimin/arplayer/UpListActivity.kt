@@ -1,6 +1,7 @@
 package com.tsimin.arplayer
 
 import android.app.Activity
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.view.View
@@ -39,7 +40,14 @@ class UpListActivity : Activity() {
             text = "关注的 UP · 已选 ${prefs.selectedUps.size}"
             textSize = 16f
             setTextColor(Color.WHITE)
-            setPadding(dp(20), dp(24), dp(20), dp(12))
+            setPadding(dp(20), dp(24), dp(20), dp(2))
+        }
+
+        val hint = TextView(this).apply {
+            text = "点击加入白名单，长按查看 UP 主页"
+            textSize = 12f
+            setTextColor(Color.parseColor("#9AA0A6"))
+            setPadding(dp(20), 0, dp(20), dp(10))
         }
 
         listView = ListView(this).apply {
@@ -62,6 +70,13 @@ class UpListActivity : Activity() {
             )
         )
         root.addView(
+            hint,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        root.addView(
             listView,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
         )
@@ -77,6 +92,16 @@ class UpListActivity : Activity() {
         listView.adapter = UpAdapter()
         listView.setOnItemClickListener { _, _, position, _ ->
             toggle(ups[position])
+        }
+        listView.setOnItemLongClickListener { _, _, position, _ ->
+            if (position < ups.size) {
+                val up = ups[position]
+                val intent = Intent(this, UpSpaceActivity::class.java)
+                intent.putExtra("mid", up.mid)
+                intent.putExtra("uname", up.uname)
+                startActivity(intent)
+            }
+            true
         }
 
         loadNext()
