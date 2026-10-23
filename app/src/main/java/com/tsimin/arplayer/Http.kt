@@ -11,7 +11,13 @@ object Http {
         "Mozilla/5.0 (Linux; Android 15; Pixel 7) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
 
+    private const val MEDIA_UA =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+
     fun userAgent(): String = UA
+
+    fun mediaUserAgent(): String = MEDIA_UA
 
     fun get(
         url: String,

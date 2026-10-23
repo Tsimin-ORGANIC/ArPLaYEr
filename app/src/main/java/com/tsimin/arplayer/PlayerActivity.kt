@@ -391,16 +391,18 @@ class PlayerActivity : Activity() {
         }
         Toast.makeText(this, "正在获取音频…", Toast.LENGTH_SHORT).show()
         thread {
+            var error = "未知错误"
             val stream = try {
                 Api.audioStream(prefs, bvid, cid)
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                error = e.message ?: "未知错误"
                 null
             }
             runOnUiThread {
                 if (stream == null) {
                     Toast.makeText(
                         this,
-                        "获取音频失败，可能需要大会员或稍后重试",
+                        "获取音频失败：$error",
                         Toast.LENGTH_LONG
                     ).show()
                     return@runOnUiThread

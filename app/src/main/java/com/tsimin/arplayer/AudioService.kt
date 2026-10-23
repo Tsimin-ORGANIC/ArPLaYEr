@@ -34,7 +34,7 @@ class AudioService : MediaSessionService() {
         headers["Referer"] = referer
         if (cookie.isNotEmpty()) headers["Cookie"] = cookie
         val dataSource = DefaultHttpDataSource.Factory()
-            .setUserAgent(Http.userAgent())
+            .setUserAgent(Http.mediaUserAgent())
             .setDefaultRequestProperties(headers)
             .setAllowCrossProtocolRedirects(true)
         val item = MediaItem.Builder()

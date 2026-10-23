@@ -258,20 +258,10 @@ object Api {
     }
 
     fun audioStream(p: Prefs, bvid: String, cid: Long): AudioStream {
-        val query = wbiQuery(
-            mapOf(
-                "bvid" to bvid,
-                "cid" to cid.toString(),
-                "fnval" to "16",
-                "fnver" to "0",
-                "fourk" to "1"
-            ),
-            p
-        )
         val json = ok(
             JSONObject(
                 Http.get(
-                    "https://api.bilibili.com/x/player/wbi/playurl?$query",
+                    "https://api.bilibili.com/x/player/playurl?bvid=$bvid&cid=$cid&fnval=4048&fnver=0&fourk=1",
                     cookie(p),
                     "https://www.bilibili.com/video/$bvid"
                 )
@@ -284,11 +274,6 @@ object Api {
             if (flac != null) {
                 val url = streamUrl(flac)
                 if (url.isNotEmpty()) return AudioStream(url, "FLAC")
-            }
-            val dolby = dash.optJSONObject("dolby")?.optJSONArray("audio")
-            if (dolby != null && dolby.length() > 0) {
-                val url = streamUrl(dolby.getJSONObject(0))
-                if (url.isNotEmpty()) return AudioStream(url, "杜比")
             }
             val audios = dash.optJSONArray("audio")
             if (audios != null && audios.length() > 0) {
