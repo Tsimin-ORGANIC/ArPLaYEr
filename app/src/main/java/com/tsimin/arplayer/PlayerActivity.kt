@@ -3,6 +3,7 @@ package com.tsimin.arplayer
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -77,6 +78,27 @@ class PlayerActivity : Activity() {
             )
         )
         root.addView(loadingText)
+
+        val actions = TextView(this).apply {
+            text = "操作"
+            textSize = 13f
+            setTextColor(Color.WHITE)
+            setPadding(dp(14), dp(8), dp(14), dp(8))
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#73000000"))
+                cornerRadius = dp(18).toFloat()
+            }
+            setOnClickListener { VideoActions.show(this@PlayerActivity, prefs, bvid) }
+        }
+        val actionsLp = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+        actionsLp.gravity = Gravity.TOP or Gravity.END
+        actionsLp.topMargin = dp(48)
+        actionsLp.rightMargin = dp(16)
+        root.addView(actions, actionsLp)
+
         setContentView(root)
 
         syncCookies()
@@ -97,6 +119,8 @@ class PlayerActivity : Activity() {
             load(bvid, aid, cid)
         }
     }
+
+    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     private fun syncCookies() {
         val cm = CookieManager.getInstance()

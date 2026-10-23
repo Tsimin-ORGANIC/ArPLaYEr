@@ -28,11 +28,14 @@ class SearchActivity : Activity() {
     private lateinit var head: TextView
     private lateinit var tabVideo: TextView
     private lateinit var tabUser: TextView
+    private lateinit var orderRow: LinearLayout
+    private val orderViews = ArrayList<TextView>()
 
     private val videos = ArrayList<VideoItem>()
     private val users = ArrayList<UserItem>()
 
     private var mode = "video"
+    private var order = "totalrank"
     private var page = 0
     private var hasMore = false
     private var loading = false
@@ -68,6 +71,27 @@ class SearchActivity : Activity() {
             tabUser,
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         )
+
+        val orders = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(20), 0, dp(20), dp(8))
+        }
+        for ((label, value) in listOf("综合" to "totalrank", "最新" to "pubdate", "播放" to "click")) {
+            val chip = TextView(this).apply {
+                text = label
+                textSize = 13f
+                gravity = android.view.Gravity.CENTER
+                setPadding(dp(12), dp(6), dp(12), dp(6))
+                setOnClickListener { selectOrder(value) }
+            }
+            orderViews.add(chip)
+            orders.addView(
+                chip,
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            )
+        }
+        this.orderRow = orders
+        styleOrder()
 
         val inputRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -123,6 +147,13 @@ class SearchActivity : Activity() {
             )
         )
         root.addView(
+            orders,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        root.addView(
             inputRow,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -160,9 +191,36 @@ class SearchActivity : Activity() {
                 toggle(users[position])
             }
         }
+        listView.setOnItemLongClickListener { _, _, position, _ ->
+            if (mode == "video" && position < videos.size) {
+                VideoActions.show(this, prefs, videos[position].bvid)
+                true
+            } else {
+                false
+            }
+        }
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+
+    private fun selectOrder(value: String) {
+        if (order == value) return
+        order = value
+        styleOrder()
+        if (query.isNotEmpty() && mode == "video") search(true)
+    }
+
+    private fun styleOrder() {
+        for (i in 0 until orderViews.size) {
+            val selected = when (i) {
+                0 -> order == "totalrank"
+                1 -> order == "pubdate"
+                else -> order == "click"
+            }
+            orderViews[i].setTextColor(if (selected) Color.WHITE else Color.parseColor("#6B7075"))
+            orderViews[i].setTypeface(null, if (selected) Typeface.BOLD else Typeface.NORMAL)
+        }
+    }
 
     private fun tab(label: String, value: String): TextView {
         return TextView(this).apply {
@@ -181,6 +239,9 @@ class SearchActivity : Activity() {
         tabUser.setTextColor(if (mode == "user") Color.WHITE else Color.parseColor("#6B7075"))
         tabVideo.setTypeface(null, if (mode == "video") Typeface.BOLD else Typeface.NORMAL)
         tabUser.setTypeface(null, if (mode == "user") Typeface.BOLD else Typeface.NORMAL)
+        if (::orderRow.isInitialized) {
+            orderRow.visibility = if (mode == "video") View.VISIBLE else View.GONE
+        }
         if (changed) {
             videos.clear()
             users.clear()
@@ -223,7 +284,7 @@ class SearchActivity : Activity() {
         thread {
             try {
                 if (m == "video") {
-                    val result = Api.searchVideos(prefs, query, next)
+                    val result = Api.searchVideos(prefs, query, next, order)
                     runOnUiThread {
                         if (mode != m) {
                             loading = false

@@ -66,6 +66,13 @@ class LoginActivity : Activity() {
             setOnClickListener { load() }
         }
 
+        val webLogin = Button(this).apply {
+            text = "网页登录（免扫码）"
+            setOnClickListener {
+                startActivity(Intent(this@LoginActivity, WebLoginActivity::class.java))
+            }
+        }
+
         root.addView(title)
         root.addView(qrView)
         root.addView(status)
@@ -75,6 +82,13 @@ class LoginActivity : Activity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(16) }
+        )
+        root.addView(
+            webLogin,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(8) }
         )
         setContentView(root)
 

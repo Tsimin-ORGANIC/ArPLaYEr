@@ -23,6 +23,14 @@ data class UserItem(val mid: Long, val uname: String, val fans: Int, val fansTex
 
 data class UserPage(val items: List<UserItem>, val hasMore: Boolean)
 
+data class VideoInfo(
+    val aid: Long,
+    val cid: Long,
+    val mid: Long,
+    val uname: String,
+    val title: String
+)
+
 data class FavPage(val items: List<VideoItem>, val hasMore: Boolean)
 
 data class Nav(val isLogin: Boolean, val mid: Long, val uname: String, val code: Int)
@@ -129,8 +137,10 @@ object Api {
         return data.getString("b_3") to data.getString("b_4")
     }
 
-    fun nav(p: Prefs): Nav {
-        val json = JSONObject(Http.get("https://api.bilibili.com/x/web-interface/nav", cookie(p)))
+    fun nav(p: Prefs): Nav = navByCookie(cookie(p))
+
+    fun navByCookie(cookie: String): Nav {
+        val json = JSONObject(Http.get("https://api.bilibili.com/x/web-interface/nav", cookie))
         val code = json.optInt("code", -1)
         val data = json.optJSONObject("data") ?: return Nav(false, 0, "", code)
         return Nav(
@@ -202,13 +212,110 @@ object Api {
         return out
     }
 
-    fun resolveCid(p: Prefs, bvid: String): Long {
+    fun resolveCid(p: Prefs, bvid: String): Long = videoInfo(p, bvid).cid
+
+    fun videoInfo(p: Prefs, bvid: String): VideoInfo {
         val json = ok(
             JSONObject(
                 Http.get("https://api.bilibili.com/x/web-interface/view?bvid=$bvid", cookie(p))
             )
         )
-        return json.getJSONObject("data").optLong("cid", 0)
+        val data = json.getJSONObject("data")
+        val owner = data.optJSONObject("owner")
+        return VideoInfo(
+            aid = data.optLong("aid"),
+            cid = data.optLong("cid"),
+            mid = owner?.optLong("mid") ?: 0L,
+            uname = owner?.optString("name") ?: "",
+            title = data.optString("title")
+        )
+    }
+
+    fun relationState(p: Prefs, mid: Long): Boolean {
+        val json = JSONObject(Http.get("https://api.bilibili.com/x/relation?fid=$mid", cookie(p)))
+        if (json.optInt("code", -1) != 0) return false
+        val attr = json.optJSONObject("data")?.optInt("attribute", 0) ?: 0
+        return attr == 2 || attr == 6
+    }
+
+    fun setFollow(p: Prefs, mid: Long, follow: Boolean): String {
+        val body = "fid=$mid&act=${if (follow) 1 else 2}&re_src=14&csrf=${p.biliJct}"
+        val json = JSONObject(
+            Http.post(
+                "https://api.bilibili.com/x/relation/modify",
+                cookie(p),
+                body,
+                "https://space.bilibili.com/$mid"
+            )
+        )
+        checkCode(json)
+        return if (follow) "关注成功" else "已取消关注"
+    }
+
+    fun hasLike(p: Prefs, bvid: String): Boolean {
+        val json = JSONObject(
+            Http.get("https://api.bilibili.com/x/web-interface/archive/has/like?bvid=$bvid", cookie(p))
+        )
+        if (json.optInt("code", -1) != 0) return false
+        return json.optInt("data", 0) == 1
+    }
+
+    fun setLike(p: Prefs, bvid: String, like: Boolean): String {
+        val body = "bvid=$bvid&like=${if (like) 1 else 2}&csrf=${p.biliJct}"
+        val json = JSONObject(
+            Http.post(
+                "https://api.bilibili.com/x/web-interface/archive/like",
+                cookie(p),
+                body,
+                "https://www.bilibili.com/video/$bvid"
+            )
+        )
+        checkCode(json)
+        return if (like) "已点赞" else "已取消点赞"
+    }
+
+    fun coins(p: Prefs, bvid: String): Int {
+        val json = JSONObject(
+            Http.get("https://api.bilibili.com/x/web-interface/archive/coins?bvid=$bvid", cookie(p))
+        )
+        if (json.optInt("code", -1) != 0) return 0
+        return json.optJSONObject("data")?.optInt("multiply", 0) ?: 0
+    }
+
+    fun addCoin(p: Prefs, bvid: String, count: Int): String {
+        val body = "bvid=$bvid&multiply=$count&csrf=${p.biliJct}"
+        val json = JSONObject(
+            Http.post(
+                "https://api.bilibili.com/x/web-interface/coin/add",
+                cookie(p),
+                body,
+                "https://www.bilibili.com/video/$bvid"
+            )
+        )
+        checkCode(json)
+        return "已投 $count 币"
+    }
+
+    fun addFav(p: Prefs, aid: Long): String {
+        val folder = favFolders(p).firstOrNull() ?: throw RuntimeException("没有收藏夹")
+        val body = "rid=$aid&type=2&add_media_ids=${folder.id}&csrf=${p.biliJct}"
+        val json = JSONObject(
+            Http.post(
+                "https://api.bilibili.com/x/v3/fav/resource/deal",
+                cookie(p),
+                body,
+                "https://www.bilibili.com/"
+            )
+        )
+        checkCode(json)
+        return "已收藏到「${folder.title}」"
+    }
+
+    private fun checkCode(json: JSONObject) {
+        val code = json.optInt("code", -1)
+        if (code != 0) {
+            throw RuntimeException("code=$code ${json.optString("message")}")
+        }
     }
 
     fun followings(p: Prefs, pn: Int): UpPage {
@@ -272,8 +379,8 @@ object Api {
         return VideoPage(out, more && out.isNotEmpty())
     }
 
-    fun searchVideos(p: Prefs, keyword: String, pn: Int): VideoPage {
-        val json = searchJson(p, "video", keyword, pn)
+    fun searchVideos(p: Prefs, keyword: String, pn: Int, order: String = "totalrank"): VideoPage {
+        val json = searchJson(p, "video", keyword, pn, order)
         val data = json.optJSONObject("data") ?: return VideoPage(emptyList(), false)
         val arr = data.optJSONArray("result") ?: return VideoPage(emptyList(), false)
         val out = ArrayList<VideoItem>(arr.length())
@@ -298,7 +405,7 @@ object Api {
     }
 
     fun searchUsers(p: Prefs, keyword: String, pn: Int): UserPage {
-        val json = searchJson(p, "bili_user", keyword, pn)
+        val json = searchJson(p, "bili_user", keyword, pn, "totalrank")
         val data = json.optJSONObject("data") ?: return UserPage(emptyList(), false)
         val arr = data.optJSONArray("result") ?: return UserPage(emptyList(), false)
         val out = ArrayList<UserItem>(arr.length())
@@ -320,7 +427,7 @@ object Api {
         return UserPage(out, pn < pages && out.isNotEmpty())
     }
 
-    private fun searchJson(p: Prefs, type: String, keyword: String, pn: Int): JSONObject {
+    private fun searchJson(p: Prefs, type: String, keyword: String, pn: Int, order: String): JSONObject {
         val referer = if (type == "video") {
             "https://search.bilibili.com/all?keyword=${enc(keyword)}"
         } else {
@@ -333,6 +440,7 @@ object Api {
                     "keyword" to keyword,
                     "page" to pn.toString(),
                     "page_size" to "30",
+                    "order" to order,
                     "platform" to "pc"
                 ),
                 p
@@ -347,7 +455,7 @@ object Api {
                 )
             )
         } catch (e: Exception) {
-            val query = "search_type=$type&keyword=${enc(keyword)}&page=$pn&page_size=30"
+            val query = "search_type=$type&keyword=${enc(keyword)}&page=$pn&page_size=30&order=$order"
             ok(
                 JSONObject(
                     Http.get(

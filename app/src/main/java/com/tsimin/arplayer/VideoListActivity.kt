@@ -103,6 +103,12 @@ class VideoListActivity : Activity() {
             startActivity(intent)
             (listView.adapter as VideoAdapter).notifyDataSetChanged()
         }
+        listView.setOnItemLongClickListener { _, _, position, _ ->
+            if (position < items.size) {
+                VideoActions.show(this, prefs, items[position].bvid)
+            }
+            true
+        }
 
         if (mode == "up") {
             upMids.addAll(prefs.selectedUps.sorted())

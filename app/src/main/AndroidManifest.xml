@@ -38,6 +38,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".WebLoginActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".SearchActivity"
             android:exported="false" />
 

@@ -17,6 +17,40 @@ object Http {
         referer: String = "https://www.bilibili.com/"
     ): String = getResult(url, cookie, referer).body
 
+    fun post(
+        url: String,
+        cookie: String?,
+        body: String,
+        referer: String = "https://www.bilibili.com/"
+    ): String {
+        val conn = URL(url).openConnection() as HttpURLConnection
+        try {
+            conn.connectTimeout = 15000
+            conn.readTimeout = 20000
+            conn.requestMethod = "POST"
+            conn.doOutput = true
+            conn.setRequestProperty("User-Agent", UA)
+            conn.setRequestProperty("Referer", referer)
+            conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+            conn.setRequestProperty("Accept", "application/json, text/plain, */*")
+            if (!cookie.isNullOrBlank()) {
+                conn.setRequestProperty("Cookie", cookie)
+            }
+            val bytes = body.toByteArray(Charsets.UTF_8)
+            conn.setFixedLengthStreamingMode(bytes.size)
+            conn.outputStream.use { it.write(bytes) }
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val text = stream?.bufferedReader()?.use { it.readText() } ?: ""
+            if (code !in 200..299) {
+                throw RuntimeException("HTTP $code")
+            }
+            return text
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     fun getResult(
         url: String,
         cookie: String? = null,
