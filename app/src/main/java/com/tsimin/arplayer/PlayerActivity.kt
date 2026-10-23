@@ -327,8 +327,7 @@ class PlayerActivity : Activity() {
 
     private fun addFav() {
         if (aid <= 0) return
-        runAction(readFavBtn, { Api.addFav(prefs, aid) }) {
-        }
+        FavPicker.show(this, prefs, aid)
     }
 
     private fun runAction(btn: Button, action: () -> String, done: () -> Unit) {

@@ -159,7 +159,7 @@ class MainActivity : Activity() {
                 "upfeed",
                 0L,
                 "UP 更新",
-                if (upCount > 0) "$upCount 个 UP" else "未选择 UP"
+                if (upCount > 0) "$upCount 个 UP · 近 7 天" else "未选择 UP"
             )
         )
         for (f in folders) {

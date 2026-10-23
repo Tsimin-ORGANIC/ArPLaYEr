@@ -171,21 +171,30 @@ class VideoListActivity : Activity() {
         head.text = "UP 更新 · 加载中…"
 
         thread {
+            val cutoff = System.currentTimeMillis() / 1000 - 7 * 24 * 3600L
             val batch = Collections.synchronizedList(ArrayList<VideoItem>())
             val pool = Executors.newFixedThreadPool(4)
             val pending = synchronized(upDone) { upMids.filter { it !in upDone } }
             for (mid in pending) {
-                val pn = synchronized(upNext) { upNext[mid] ?: 1 }
+                var pn = synchronized(upNext) { upNext[mid] ?: 1 }
                 pool.execute {
+                    var done = false
+                    var guard = 0
                     try {
-                        val result = Api.upVideos(prefs, mid, pn, 30)
-                        synchronized(upNext) { upNext[mid] = pn + 1 }
-                        if (!result.hasMore || result.items.isEmpty()) {
-                            synchronized(upDone) { upDone.add(mid) }
+                        while (!done && guard < 4) {
+                            val result = Api.upVideos(prefs, mid, pn, 30)
+                            guard++
+                            batch.addAll(result.items.filter { it.pubtime >= cutoff })
+                            val reachedOld = result.items.any { it.pubtime < cutoff }
+                            pn += 1
+                            if (!result.hasMore || reachedOld || result.items.isEmpty()) {
+                                done = true
+                            }
                         }
-                        batch.addAll(result.items)
                     } catch (_: Exception) {
                     }
+                    synchronized(upNext) { upNext[mid] = pn }
+                    if (done) synchronized(upDone) { upDone.add(mid) }
                 }
             }
             pool.shutdown()
@@ -199,7 +208,7 @@ class VideoListActivity : Activity() {
                 more.isEnabled = true
                 more.text = "加载更多"
                 for (item in filtered) {
-                    if (seen.add(item.bvid)) items.add(item)
+                    if (item.pubtime >= cutoff && seen.add(item.bvid)) items.add(item)
                 }
                 items.sortByDescending { it.pubtime }
                 (listView.adapter as VideoAdapter).notifyDataSetChanged()
@@ -207,10 +216,10 @@ class VideoListActivity : Activity() {
                 val doneCount = synchronized(upDone) { upDone.size }
                 hasMore = doneCount < upMids.size
                 more.visibility = if (hasMore) View.VISIBLE else View.GONE
-                head.text = "UP 更新 · ${items.size} 个"
+                head.text = "UP 更新 · 近 7 天 · ${items.size} 个"
 
                 if (items.isEmpty() && !hasMore) {
-                    Toast.makeText(this, "没有匹配的视频", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "近 7 天没有更新", Toast.LENGTH_SHORT).show()
                 }
             }
         }

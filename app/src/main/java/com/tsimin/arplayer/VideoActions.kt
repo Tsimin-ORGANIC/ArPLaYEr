@@ -56,7 +56,7 @@ object VideoActions {
         onDone: (() -> Unit)?
     ) {
         val labels = ArrayList<String>()
-        val actions = ArrayList<() -> String>()
+        val actions = ArrayList<(() -> String)?>()
 
         if (info.mid > 0) {
             labels.add(if (followed) "取消关注 ${info.uname}" else "关注 ${info.uname}")
@@ -74,21 +74,26 @@ object VideoActions {
             actions.add { "已经投满 2 枚了" }
         }
 
-        labels.add("收藏到默认收藏夹")
-        actions.add { Api.addFav(prefs, info.aid) }
+        labels.add("收藏到指定收藏夹")
+        actions.add(null)
 
         AlertDialog.Builder(activity)
             .setTitle(info.title.take(40))
             .setItems(labels.toTypedArray()) { _, which ->
-                thread {
-                    val message = try {
-                        actions[which]()
-                    } catch (e: Exception) {
-                        "失败：${e.message}"
-                    }
-                    activity.runOnUiThread {
-                        Toast.makeText(activity, message, Toast.LENGTH_SHORT).show()
-                        onDone?.invoke()
+                val action = actions[which]
+                if (action == null) {
+                    FavPicker.show(activity, prefs, info.aid, onDone)
+                } else {
+                    thread {
+                        val message = try {
+                            action()
+                        } catch (e: Exception) {
+                            "失败：${e.message}"
+                        }
+                        activity.runOnUiThread {
+                            Toast.makeText(activity, message, Toast.LENGTH_SHORT).show()
+                            onDone?.invoke()
+                        }
                     }
                 }
             }

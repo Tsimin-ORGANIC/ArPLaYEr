@@ -340,9 +340,8 @@ object Api {
         return "已投 $count 币"
     }
 
-    fun addFav(p: Prefs, aid: Long): String {
-        val folder = favFolders(p).firstOrNull() ?: throw RuntimeException("没有收藏夹")
-        val body = "rid=$aid&type=2&add_media_ids=${folder.id}&csrf=${p.biliJct}"
+    fun addFav(p: Prefs, aid: Long, folderId: Long): String {
+        val body = "rid=$aid&type=2&add_media_ids=$folderId&csrf=${p.biliJct}"
         val json = JSONObject(
             Http.post(
                 "https://api.bilibili.com/x/v3/fav/resource/deal",
@@ -352,7 +351,7 @@ object Api {
             )
         )
         checkCode(json)
-        return "已收藏到「${folder.title}」"
+        return "已加入收藏夹"
     }
 
     private fun checkCode(json: JSONObject) {
