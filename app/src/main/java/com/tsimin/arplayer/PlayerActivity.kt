@@ -1,10 +1,13 @@
 package com.tsimin.arplayer
 
 import android.annotation.SuppressLint
+import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.text.TextUtils
 import android.view.Gravity
@@ -57,6 +60,7 @@ class PlayerActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
+        stopService(Intent(this, AudioService::class.java))
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         bvid = intent.getStringExtra("bvid") ?: ""
@@ -167,6 +171,12 @@ class PlayerActivity : Activity() {
             setOnClickListener { openSpace() }
         }
 
+        val bgBtn = Button(this).apply {
+            text = "后台听（锁屏继续）"
+            textSize = 14f
+            setOnClickListener { startBackgroundAudio() }
+        }
+
         content.addView(titleView)
         content.addView(statsView)
         content.addView(
@@ -189,6 +199,13 @@ class PlayerActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(18) }
+        )
+        content.addView(
+            bgBtn,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(12) }
         )
         scroll.addView(
             content,
@@ -359,6 +376,57 @@ class PlayerActivity : Activity() {
         intent.putExtra("mid", upMid)
         intent.putExtra("uname", upName)
         startActivity(intent)
+    }
+
+    private fun startBackgroundAudio() {
+        if (cid <= 0) {
+            Toast.makeText(this, "视频信息还没加载好，稍后再试", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 100)
+        }
+        Toast.makeText(this, "正在获取音频…", Toast.LENGTH_SHORT).show()
+        thread {
+            val stream = try {
+                Api.audioStream(prefs, bvid, cid)
+            } catch (_: Exception) {
+                null
+            }
+            runOnUiThread {
+                if (stream == null) {
+                    Toast.makeText(
+                        this,
+                        "获取音频失败，可能需要大会员或稍后重试",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return@runOnUiThread
+                }
+                webView.evaluateJavascript(
+                    "(function(){document.querySelectorAll('video,audio').forEach(function(v){v.pause();});})()",
+                    null
+                )
+                val svc = Intent(this, AudioService::class.java)
+                svc.putExtra("url", stream.url)
+                svc.putExtra(
+                    "title",
+                    if (titleView.text.contains("加载中")) bvid else titleView.text.toString()
+                )
+                svc.putExtra("artist", upName)
+                svc.putExtra("referer", "https://www.bilibili.com/video/$bvid")
+                svc.putExtra("cookie", Api.cookie(prefs))
+                startService(svc)
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                Toast.makeText(
+                    this,
+                    "后台播放中（${stream.label}），可锁屏或切到其它应用",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
     }
 
     private fun syncCookies() {

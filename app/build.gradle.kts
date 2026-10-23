@@ -15,8 +15,8 @@ android {
         applicationId = "com.tsimin.arplayer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.5.2"
+        versionCode = 10
+        versionName = "0.6.0"
     }
 
     signingConfigs {
@@ -52,4 +52,6 @@ android {
 
 dependencies {
     implementation("com.google.zxing:core:3.5.3")
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-session:1.4.1")
 }

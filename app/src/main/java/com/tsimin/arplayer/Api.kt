@@ -61,6 +61,8 @@ data class Up(val mid: Long, val uname: String)
 
 data class UpPage(val items: List<Up>, val hasMore: Boolean)
 
+data class AudioStream(val url: String, val label: String)
+
 object Api {
 
     private const val APP_KEY = "1d8b6e7d45233436"
@@ -254,6 +256,75 @@ object Api {
             favCount = stat?.optLong("favorite") ?: 0
         )
     }
+
+    fun audioStream(p: Prefs, bvid: String, cid: Long): AudioStream {
+        val query = wbiQuery(
+            mapOf(
+                "bvid" to bvid,
+                "cid" to cid.toString(),
+                "fnval" to "16",
+                "fnver" to "0",
+                "fourk" to "1"
+            ),
+            p
+        )
+        val json = ok(
+            JSONObject(
+                Http.get(
+                    "https://api.bilibili.com/x/player/wbi/playurl?$query",
+                    cookie(p),
+                    "https://www.bilibili.com/video/$bvid"
+                )
+            )
+        )
+        val data = json.optJSONObject("data") ?: throw RuntimeException("无播放数据")
+        val dash = data.optJSONObject("dash")
+        if (dash != null) {
+            val flac = dash.optJSONObject("flac")?.optJSONObject("audio")
+            if (flac != null) {
+                val url = streamUrl(flac)
+                if (url.isNotEmpty()) return AudioStream(url, "FLAC")
+            }
+            val dolby = dash.optJSONObject("dolby")?.optJSONArray("audio")
+            if (dolby != null && dolby.length() > 0) {
+                val url = streamUrl(dolby.getJSONObject(0))
+                if (url.isNotEmpty()) return AudioStream(url, "杜比")
+            }
+            val audios = dash.optJSONArray("audio")
+            if (audios != null && audios.length() > 0) {
+                var best: JSONObject? = null
+                for (i in 0 until audios.length()) {
+                    val item = audios.optJSONObject(i) ?: continue
+                    if (best == null || item.optLong("bandwidth") > best.optLong("bandwidth")) {
+                        best = item
+                    }
+                }
+                if (best != null) {
+                    val url = streamUrl(best)
+                    if (url.isNotEmpty()) return AudioStream(url, "AAC")
+                }
+            }
+        }
+        val durl = data.optJSONArray("durl")
+        if (durl != null && durl.length() > 0) {
+            val url = durl.getJSONObject(0).optString("url")
+            if (url.isNotEmpty()) return AudioStream(normalizeUrl(url), "MP4")
+        }
+        throw RuntimeException("没有可用音轨")
+    }
+
+    private fun streamUrl(o: JSONObject): String {
+        val url = o.optString("baseUrl").ifEmpty { o.optString("base_url") }
+        if (url.isNotEmpty()) return normalizeUrl(url)
+        val backups = o.optJSONArray("backupUrl") ?: o.optJSONArray("backup_url")
+        if (backups != null && backups.length() > 0) {
+            return normalizeUrl(backups.optString(0))
+        }
+        return ""
+    }
+
+    private fun normalizeUrl(url: String): String =
+        if (url.startsWith("http://")) "https://" + url.removePrefix("http://") else url
 
     fun spaceCard(p: Prefs, mid: Long): SpaceCard {
         val json = ok(

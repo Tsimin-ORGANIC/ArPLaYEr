@@ -11,6 +11,8 @@ object Http {
         "Mozilla/5.0 (Linux; Android 15; Pixel 7) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
 
+    fun userAgent(): String = UA
+
     fun get(
         url: String,
         cookie: String? = null,
