@@ -9,8 +9,10 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import com.google.zxing.BarcodeFormat
@@ -31,43 +33,53 @@ class LoginActivity : Activity() {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
 
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            setBackgroundColor(Color.parseColor("#0E1015"))
+        }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(32), dp(32), dp(32), dp(32))
-            setBackgroundColor(Color.parseColor("#0E1015"))
+            setPadding(dp(14), dp(14), dp(14), dp(14))
         }
 
         val title = TextView(this).apply {
             text = "扫码登录"
-            textSize = 20f
+            textSize = 18f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
         }
 
+        // 手表等小屏：宽度优先，最大 210dp，避免超出屏幕
+        val qrSize = minOf(
+            (resources.displayMetrics.widthPixels * 0.72f).toInt(),
+            dp(210)
+        )
         qrView = ImageView(this).apply {
             setBackgroundColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(dp(240), dp(240)).apply {
-                topMargin = dp(24)
-                bottomMargin = dp(24)
+            layoutParams = LinearLayout.LayoutParams(qrSize, qrSize).apply {
+                topMargin = dp(14)
+                bottomMargin = dp(14)
             }
         }
 
         status = TextView(this).apply {
             text = "正在获取二维码…"
-            textSize = 13f
+            textSize = 12f
             setTextColor(Color.parseColor("#9AA0A6"))
             gravity = Gravity.CENTER
         }
 
         refresh = Button(this).apply {
             text = "刷新二维码"
+            textSize = 13f
             visibility = View.GONE
             setOnClickListener { load() }
         }
 
         val webLogin = Button(this).apply {
             text = "网页登录（免扫码）"
+            textSize = 13f
             setOnClickListener {
                 startActivity(Intent(this@LoginActivity, WebLoginActivity::class.java))
             }
@@ -81,16 +93,23 @@ class LoginActivity : Activity() {
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(16) }
+            ).apply { topMargin = dp(12) }
         )
         root.addView(
             webLogin,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(8) }
+            ).apply { topMargin = dp(6) }
         )
-        setContentView(root)
+        scroll.addView(
+            root,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+        setContentView(scroll)
 
         load()
     }
